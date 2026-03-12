@@ -1,1 +1,323 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Simba Upgrade Config Builder</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f8fb;
+      --surface: #ffffff;
+      --text: #101828;
+      --muted: #475467;
+      --accent: #0d6efd;
+      --border: #d0d5dd;
+    }
 
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #111827;
+        --surface: #1f2937;
+        --text: #f9fafb;
+        --muted: #d1d5db;
+        --accent: #60a5fa;
+        --border: #374151;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+
+    .wrap {
+      max-width: 980px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    h1 { margin: 0 0 8px; font-size: 1.8rem; }
+    .sub { margin: 0 0 24px; color: var(--muted); }
+
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 12px;
+    }
+
+    label {
+      display: block;
+      font-size: 0.9rem;
+      margin-bottom: 6px;
+      font-weight: 600;
+    }
+
+    input, textarea, select, button {
+      width: 100%;
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px 12px;
+      font: inherit;
+      color: inherit;
+      background: transparent;
+    }
+
+    textarea { min-height: 88px; resize: vertical; }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+
+    button {
+      cursor: pointer;
+      font-weight: 600;
+      transition: transform 0.05s ease;
+    }
+
+    button.primary {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #fff;
+    }
+
+    button:active { transform: translateY(1px); }
+
+    .hint {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+
+    .pill {
+      display: inline-block;
+      margin-right: 6px;
+      margin-top: 6px;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    #status { min-height: 1.4em; font-size: 0.9rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <main class="wrap">
+    <h1>Upgrade / Change Config Builder</h1>
+    <p class="sub">Use this page (for example on GitHub Pages), copy the generated text, and paste it into chat so I can apply upgrades quickly and accurately.</p>
+
+    <section class="card">
+      <h2>Project Context</h2>
+      <div class="grid">
+        <div>
+          <label for="projectName">Project name</label>
+          <input id="projectName" placeholder="Simba" />
+        </div>
+        <div>
+          <label for="repoUrl">Repo URL</label>
+          <input id="repoUrl" placeholder="https://github.com/you/repo" />
+        </div>
+        <div>
+          <label for="branch">Target branch</label>
+          <input id="branch" placeholder="main" />
+        </div>
+        <div>
+          <label for="priority">Priority</label>
+          <select id="priority">
+            <option>Low</option>
+            <option selected>Medium</option>
+            <option>High</option>
+            <option>Critical</option>
+          </select>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>What should be changed?</h2>
+      <label for="goal">Primary goal</label>
+      <textarea id="goal" placeholder="What do you want upgraded or changed?"></textarea>
+
+      <label for="scope">Scope / files / modules</label>
+      <textarea id="scope" placeholder="Which pages, APIs, components, or folders are in scope?"></textarea>
+
+      <label for="constraints">Constraints (must / must not)</label>
+      <textarea id="constraints" placeholder="Coding style, forbidden libraries, deadlines, compatibility requirements..."></textarea>
+
+      <label for="acceptance">Acceptance criteria</label>
+      <textarea id="acceptance" placeholder="How should we verify that this task is complete?"></textarea>
+    </section>
+
+    <section class="card">
+      <h2>Environment & Stack</h2>
+      <div class="grid">
+        <div>
+          <label for="languages">Languages</label>
+          <input id="languages" placeholder="TypeScript, Python" />
+        </div>
+        <div>
+          <label for="frameworks">Frameworks</label>
+          <input id="frameworks" placeholder="React, FastAPI" />
+        </div>
+        <div>
+          <label for="runtime">Runtime / toolchain</label>
+          <input id="runtime" placeholder="Node 20, Python 3.11" />
+        </div>
+        <div>
+          <label for="tests">Preferred test command</label>
+          <input id="tests" placeholder="npm test" />
+        </div>
+      </div>
+      <p>
+        <span class="pill">Tip: keep this short</span>
+        <span class="pill">Tip: include version targets</span>
+        <span class="pill">Tip: mention deployment platform</span>
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>Generated prompt to paste in chat</h2>
+      <textarea id="output" readonly placeholder="Click Generate Config"></textarea>
+      <div class="actions">
+        <button class="primary" id="generateBtn" type="button">Generate Config</button>
+        <button id="copyBtn" type="button">Copy</button>
+        <button id="downloadBtn" type="button">Download JSON</button>
+        <button id="loadBtn" type="button">Load JSON</button>
+        <input id="fileInput" type="file" accept="application/json" hidden />
+      </div>
+      <p id="status" aria-live="polite"></p>
+    </section>
+  </main>
+
+  <script>
+    const fields = [
+      "projectName", "repoUrl", "branch", "priority", "goal", "scope",
+      "constraints", "acceptance", "languages", "frameworks", "runtime", "tests"
+    ];
+
+    const $ = (id) => document.getElementById(id);
+
+    const getData = () => fields.reduce((obj, id) => {
+      obj[id] = $(id).value.trim();
+      return obj;
+    }, {});
+
+    const setData = (data) => {
+      fields.forEach((id) => {
+        if (typeof data[id] === "string") {
+          $(id).value = data[id];
+        }
+      });
+    };
+
+    const buildPrompt = (d) => {
+      return [
+        "Task Configuration",
+        "==================",
+        `Project: ${d.projectName || "(not provided)"}`,
+        `Repository: ${d.repoUrl || "(not provided)"}`,
+        `Branch: ${d.branch || "(not provided)"}`,
+        `Priority: ${d.priority || "Medium"}`,
+        "",
+        "Goal:",
+        d.goal || "(not provided)",
+        "",
+        "Scope:",
+        d.scope || "(not provided)",
+        "",
+        "Constraints:",
+        d.constraints || "(not provided)",
+        "",
+        "Acceptance Criteria:",
+        d.acceptance || "(not provided)",
+        "",
+        "Environment:",
+        `- Languages: ${d.languages || "(not provided)"}`,
+        `- Frameworks: ${d.frameworks || "(not provided)"}`,
+        `- Runtime/toolchain: ${d.runtime || "(not provided)"}`,
+        `- Preferred tests: ${d.tests || "(not provided)"}`,
+        "",
+        "Please implement this task and explain important tradeoffs."
+      ].join("\n");
+    };
+
+    const setStatus = (msg) => { $("status").textContent = msg; };
+
+    $("generateBtn").addEventListener("click", () => {
+      const data = getData();
+      $("output").value = buildPrompt(data);
+      localStorage.setItem("simba-config", JSON.stringify(data));
+      setStatus("Generated. Copy and paste this into chat.");
+    });
+
+    $("copyBtn").addEventListener("click", async () => {
+      const out = $("output");
+      if (!out.value.trim()) {
+        setStatus("Generate the config first.");
+        return;
+      }
+      try {
+        await navigator.clipboard.writeText(out.value);
+        setStatus("Copied to clipboard.");
+      } catch {
+        out.select();
+        document.execCommand("copy");
+        setStatus("Copied (fallback). If blocked, copy manually.");
+      }
+    });
+
+    $("downloadBtn").addEventListener("click", () => {
+      const data = getData();
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${data.projectName || "simba"}-config.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus("JSON downloaded.");
+    });
+
+    $("loadBtn").addEventListener("click", () => $("fileInput").click());
+
+    $("fileInput").addEventListener("change", async (e) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        setData(data);
+        $("output").value = buildPrompt(getData());
+        setStatus("JSON loaded.");
+      } catch {
+        setStatus("Invalid JSON file.");
+      } finally {
+        e.target.value = "";
+      }
+    });
+
+    const saved = localStorage.getItem("simba-config");
+    if (saved) {
+      try { setData(JSON.parse(saved)); } catch {}
+    }
+  </script>
+</body>
+</html>
