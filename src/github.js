@@ -20,6 +20,30 @@ async function githubRequest(path, config) {
 }
 
 export async function listOwnerRepos(config) {
+  try {
+    const repos = await githubRequest(`/users/${config.githubOwner}/repos?per_page=${config.githubRepoScanLimit}&sort=updated`, config)
+      .catch(async () => githubRequest(`/orgs/${config.githubOwner}/repos?per_page=${config.githubRepoScanLimit}&sort=updated`, config));
+
+    return repos.map((repo) => ({
+      name: repo.name,
+      fullName: repo.full_name,
+      description: repo.description || "",
+      defaultBranch: repo.default_branch,
+      language: repo.language || "unknown",
+      visibility: repo.private ? "private" : "public",
+      archived: repo.archived
+    }));
+  } catch (error) {
+    return [{
+      name: config.githubOwner,
+      fullName: `${config.githubOwner}/(repo-list-unavailable)`,
+      description: `Repository listing unavailable: ${error.message}`,
+      defaultBranch: "unknown",
+      language: "unknown",
+      visibility: "unknown",
+      archived: false
+    }];
+  }
   const repos = await githubRequest(`/users/${config.githubOwner}/repos?per_page=${config.githubRepoScanLimit}&sort=updated`, config)
     .catch(async () => githubRequest(`/orgs/${config.githubOwner}/repos?per_page=${config.githubRepoScanLimit}&sort=updated`, config));
 
@@ -67,6 +91,38 @@ export async function inspectRepository(targetRepo, config) {
     throw new Error("targetRepo must be in owner/repo format");
   }
 
+  try {
+    const repoMeta = await githubRequest(`/repos/${owner}/${repo}`, config);
+
+    const readme = await getFileContent(owner, repo, "README.md", repoMeta.default_branch, config);
+    const agents = await getFileContent(owner, repo, "AGENTS.md", repoMeta.default_branch, config);
+    const pkg = await getFileContent(owner, repo, "package.json", repoMeta.default_branch, config);
+    const pyproject = await getFileContent(owner, repo, "pyproject.toml", repoMeta.default_branch, config);
+
+    return {
+      targetRepo,
+      defaultBranch: repoMeta.default_branch,
+      language: repoMeta.language || "unknown",
+      description: repoMeta.description || "",
+      readmeSnippet: snippet(readme),
+      agentsSnippet: snippet(agents),
+      packageSnippet: snippet(pkg),
+      pyprojectSnippet: snippet(pyproject),
+      auditSource: "github-api"
+    };
+  } catch (error) {
+    return {
+      targetRepo,
+      defaultBranch: "main",
+      language: "unknown",
+      description: `Repository audit fallback used: ${error.message}`,
+      readmeSnippet: "not found",
+      agentsSnippet: "not found",
+      packageSnippet: "not found",
+      pyprojectSnippet: "not found",
+      auditSource: "fallback"
+    };
+  }
   const repoMeta = await githubRequest(`/repos/${owner}/${repo}`, config);
 
   const readme = await getFileContent(owner, repo, "README.md", repoMeta.default_branch, config);
