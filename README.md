@@ -16,6 +16,7 @@ This repository originally contained:
 - `CLAUDBOT_SETUP_STATUS.md`: previous environment setup notes.
 
 The bot implementation is additive and does not remove those files.
+The bot implementation added in this upgrade is additive and does not remove those files.
 
 ## Features
 
@@ -59,6 +60,7 @@ Copy `.env.example` and set real values.
 Required:
 
 - `TELEGRAM_BOT_TOKEN` (Telegram runtime only)
+- `TELEGRAM_BOT_TOKEN`
 - `GITHUB_TOKEN`
 - `GITHUB_OWNER`
 
@@ -67,6 +69,7 @@ Optional:
 - `GITHUB_API_BASE_URL` (default `https://api.github.com`)
 - `TELEGRAM_POLL_INTERVAL_MS` (default `3000`)
 - `ARTIFACTS_DIR` (default `artifacts` for bot runtime, `.` for CLI packet generation if unset)
+- `ARTIFACTS_DIR` (default `artifacts`)
 - `GITHUB_REPO_SCAN_LIMIT` (default `30`)
 
 ## Run
@@ -102,3 +105,7 @@ npm run generate:packet
 - Uses long polling through Telegram Bot API (`getUpdates`) with no extra framework dependencies.
 - Uses native Node.js `fetch` (Node 20+) and filesystem writes for artifact persistence.
 - Works in container or VM deployment as long as environment variables are configured.
+
+## Notes about source-repo transfer audit
+
+Direct network access to inspect specific upstream repositories may be restricted in some environments. When GitHub access is available, Simba still performs account/org repo discovery via `/repos` and task-time audit through GitHub APIs.
