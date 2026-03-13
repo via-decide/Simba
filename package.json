@@ -1,0 +1,15 @@
+{
+  "name": "simba",
+  "version": "1.0.0",
+  "description": "Telegram-deployable repo orchestration bot for Codex/Claude prompt and PR package generation",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "check": "node --check src/index.js && node --check src/config.js && node --check src/github.js && node --check src/orchestrator.js && node --check src/templates.js && node --check src/artifacts.js && node --check src/generate-task-packet.js",
+    "generate:packet": "node src/generate-task-packet.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
