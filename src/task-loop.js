@@ -81,6 +81,12 @@ export async function startLoop({
   };
   activeLoops.set(key, loopState);
 
+  // Clear stale pending tasks from previous runs
+  await stateEngine.clearStalePending(chatId);
+
+  const preQueue = await stateEngine.getTaskQueue(chatId);
+  const alreadyDone = preQueue.completed.length;
+
   await messenger.sendMessage(
     chatId,
     [
@@ -89,8 +95,9 @@ export async function startLoop({
       `Delay: ${delayMs / 1000}s between tasks`,
       `Max tasks: ${maxTasks}`,
       categories ? `Categories: ${categories.join(", ")}` : "Categories: all",
+      alreadyDone > 0 ? `Skipping ${alreadyDone} already-completed tools.` : "",
       `Use /loop stop to halt.`
-    ].join("\n")
+    ].filter(Boolean).join("\n")
   );
 
   await stateEngine.appendLog(chatId, {
@@ -100,13 +107,12 @@ export async function startLoop({
 
   try {
     while (loopState.running && loopState.tasksCompleted + loopState.tasksFailed < maxTasks) {
-      // Get completed + pending task IDs from state
+      // Only exclude completed tasks — NOT stale pending ones
       const taskQueue = await stateEngine.getTaskQueue(chatId);
       const completedIds = taskQueue.completed.map((t) => t.toolId).filter(Boolean);
-      const pendingIds = taskQueue.pending.map((t) => t.toolId).filter(Boolean);
 
       // Generate next task
-      const nextTask = await generateNextTask(config, completedIds, pendingIds);
+      const nextTask = await generateNextTask(config, completedIds, []);
 
       if (!nextTask) {
         await messenger.sendMessage(chatId, "✅ No more tasks to generate. All catalog tools exist or are queued.");

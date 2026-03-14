@@ -178,4 +178,11 @@ export class SimbaStateEngine {
       return { ...chat, taskQueue: [] };
     });
   }
+
+  async clearStalePending(chatId) {
+    return this.upsertChatState(chatId, (chat) => {
+      const queue = (chat.taskQueue || []).filter((t) => t.status !== "pending");
+      return { ...chat, taskQueue: queue };
+    });
+  }
 }
