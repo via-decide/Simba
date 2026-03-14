@@ -109,3 +109,64 @@ npm run generate:packet
 ## Notes about source-repo transfer audit
 
 Direct network access to inspect specific upstream repositories may be restricted in some environments. When GitHub access is available, Simba still performs account/org repo discovery via `/repos` and task-time audit through GitHub APIs.
+
+## Testing Simba through the Telegram bot
+
+Simba now includes a bot execution test mode that can run a safe, stage-based dry-run pipeline from Telegram commands.
+
+### Bot commands
+
+- `/start` and `/help`: command help
+- `/analyze <owner/repo>`: validates and inspects a repository
+- `/improve <owner/repo>`: opens a preview card before execution
+- `/status`: shows task id, current stage, retries, timestamp, and result
+- `/resume`: retries the most recent task
+- `/test`: runs a safe dry-run test task
+- `/repos`: lists repos for configured owner/org
+
+### Dry-run safety mode
+
+`/improve` defaults to dry-run safety mode in bot testing.
+
+In dry-run:
+- no real push is performed
+- no real PR is created
+- commit/push/PR stages are simulated but still reported to Telegram
+
+In live mode:
+- push and PR creation are still gated by:
+  - `SIMBA_ALLOW_LIVE_PUSH=true`
+  - `SIMBA_ALLOW_LIVE_PR=true`
+
+### Sample Telegram flow
+
+1. `/start`
+2. `/analyze octocat/Hello-World`
+3. `/improve octocat/Hello-World`
+4. tap **Run dry-run** in preview card
+5. observe stage updates for: `PLAN`, `CODE_GENERATION`, `CODE_REPAIR`, `COMMIT`, `PUSH`, `PR_CREATION`, `COMPLETE`
+6. `/status` to inspect the latest persisted execution state
+
+### Local bot flow harness
+
+Run the local harness to simulate command routing and execution without Telegram network polling:
+
+```bash
+node scripts/test-bot-flow.js
+```
+
+The harness feeds `/start`, `/analyze`, `/improve`, confirms dry-run via callback data, and then checks `/status` while capturing bot responses.
+
+### Error handling format
+
+Simba returns Telegram-safe structured errors containing:
+- what failed
+- likely cause
+- whether retry is possible
+- next action
+
+Common errors covered:
+- missing token (startup config validation)
+- invalid repository format
+- GitHub unreachable/fallback audit behavior
+- live push/PR disabled by policy flags

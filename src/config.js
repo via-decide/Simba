@@ -13,6 +13,8 @@ export function loadConfig() {
     githubApiBaseUrl: process.env.GITHUB_API_BASE_URL || "https://api.github.com",
     pollIntervalMs: Number(process.env.TELEGRAM_POLL_INTERVAL_MS || 3000),
     artifactsDir: process.env.ARTIFACTS_DIR || "artifacts",
-    githubRepoScanLimit: Number(process.env.GITHUB_REPO_SCAN_LIMIT || 30)
+    githubRepoScanLimit: Number(process.env.GITHUB_REPO_SCAN_LIMIT || 30),
+    allowLivePush: process.env.SIMBA_ALLOW_LIVE_PUSH === "true",
+    allowLivePr: process.env.SIMBA_ALLOW_LIVE_PR === "true"
   };
 }
