@@ -1,5 +1,5 @@
 import path from "node:path";
-import { inspectRepository, listOwnerRepos } from "./github.js";
+import { inspectRepository, listOwnerRepos, getBranchSha, createBranch, commitFile, createPullRequest } from "./github.js";
 import { writeArtifacts } from "./artifacts.js";
 import {
   buildClaudeRepairPrompt,
@@ -40,6 +40,24 @@ export async function runTask(task, config) {
     executionPacket
   });
 
+  // Attempt to create a real GitHub PR branch and PR
+  let prUrl = null;
+  let prError = null;
+  try {
+    prUrl = await pushPrToGitHub({
+      task,
+      repoAudit,
+      prPackage,
+      codexPrompt,
+      claudePrompt,
+      prMarkdown,
+      outputDir,
+      config
+    });
+  } catch (err) {
+    prError = err.message;
+  }
+
   return {
     taskUnderstanding: {
       targetRepo: task.targetRepo,
@@ -51,15 +69,50 @@ export async function runTask(task, config) {
     repoAudit,
     transferAudit,
     assumptions: [
-      "GitHub token has read access to target and sibling repos.",
+      "GitHub token has read/write access to target repo.",
       "Telegram delivery can include markdown text and short file path references."
     ],
     codexPrompt,
     claudePrompt,
     prPackage,
     executionPacket,
-    artifactPaths
+    artifactPaths,
+    prUrl,
+    prError,
+    patchPath: artifactPaths.find((p) => p.endsWith("changes.patch")) || null
   };
+}
+
+/**
+ * Create a branch in the target repo, commit all artifact files to it,
+ * then open a pull request. Returns the PR HTML URL.
+ */
+async function pushPrToGitHub({ task, repoAudit, prPackage, codexPrompt, claudePrompt, prMarkdown, outputDir, config }) {
+  const [owner, repo] = task.targetRepo.split("/");
+  const base = repoAudit.defaultBranch || "main";
+  const branch = prPackage.branch;
+
+  // Get SHA of the base branch HEAD
+  const baseSha = await getBranchSha(owner, repo, base, config);
+
+  // Create the new branch
+  await createBranch(owner, repo, branch, baseSha, config);
+
+  // Commit artifact files onto the branch
+  const artifactDir = `artifacts/${task.targetRepo.replace("/", "__")}`;
+  const files = {
+    [`${artifactDir}/codex-task.md`]: codexPrompt,
+    [`${artifactDir}/claude-repair-task.md`]: claudePrompt,
+    [`${artifactDir}/pr-package.md`]: prMarkdown
+  };
+
+  for (const [filePath, content] of Object.entries(files)) {
+    await commitFile(owner, repo, filePath, content, `simba: add orchestration artifacts for task`, branch, config);
+  }
+
+  // Create the PR
+  const pr = await createPullRequest(owner, repo, branch, base, prPackage.title, prPackage.body, config);
+  return pr.url;
 }
 
 function classifyTransferCandidates(repos) {
@@ -102,7 +155,7 @@ export function parseTaskMessage(message) {
 }
 
 export function formatTelegramResult(result) {
-  return [
+  const lines = [
     "✅ Simba orchestration packet created",
     `Repo: ${result.taskUnderstanding.targetRepo}`,
     `Mode: ${result.taskUnderstanding.mode}`,
@@ -116,8 +169,21 @@ export function formatTelegramResult(result) {
     "PR package:",
     `- Branch: ${result.prPackage.branch}`,
     `- Title: ${result.prPackage.title}`,
+    result.prUrl
+      ? `- PR URL: ${result.prUrl}`
+      : result.prError
+        ? `- PR creation failed: ${result.prError}`
+        : "- PR URL: not created (check SIMBA_ALLOW_LIVE_PR)",
     "",
     "Artifacts:",
-    ...result.artifactPaths.map((path) => `- ${path}`)
-  ].join("\n");
+    ...result.artifactPaths.map((p) => `- ${p}`)
+  ];
+
+  if (result.patchPath) {
+    lines.push("");
+    lines.push("Apply patch:");
+    lines.push(`  git apply ${result.patchPath}`);
+  }
+
+  return lines.join("\n");
 }

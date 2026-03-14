@@ -2,13 +2,14 @@ const JSON_HEADERS = {
   Accept: "application/vnd.github+json"
 };
 
-async function githubRequest(path, config) {
+async function githubRequest(path, config, options = {}) {
   const response = await fetch(`${config.githubApiBaseUrl}${path}`, {
     headers: {
       ...JSON_HEADERS,
       Authorization: `Bearer ${config.githubToken}`,
       "X-GitHub-Api-Version": "2022-11-28"
-    }
+    },
+    ...options
   });
 
   if (!response.ok) {
@@ -111,6 +112,57 @@ export async function inspectRepository(targetRepo, config) {
       auditSource: "fallback"
     };
   }
+}
+
+/** Get the SHA of the HEAD commit on a branch */
+export async function getBranchSha(owner, repo, branch, config) {
+  const data = await githubRequest(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`, config);
+  return data.object.sha;
+}
+
+/** Create a new branch from a base SHA */
+export async function createBranch(owner, repo, branchName, baseSha, config) {
+  await githubRequest(`/repos/${owner}/${repo}/git/refs`, config, {
+    method: "POST",
+    body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseSha })
+  });
+}
+
+/** Commit a single file to a branch (create or update) */
+export async function commitFile(owner, repo, filePath, content, message, branch, config) {
+  const encoded = Buffer.from(content, "utf8").toString("base64");
+
+  // Check if file already exists to get its SHA (needed for update)
+  let sha;
+  try {
+    const existing = await githubRequest(
+      `/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}?ref=${encodeURIComponent(branch)}`,
+      config
+    );
+    sha = existing.sha;
+  } catch {
+    sha = undefined;
+  }
+
+  const body = { message, content: encoded, branch };
+  if (sha) body.sha = sha;
+
+  await githubRequest(`/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`, config, {
+    method: "PUT",
+    body: JSON.stringify(body)
+  });
+}
+
+/** Create a pull request and return its URL */
+export async function createPullRequest(owner, repo, branch, base, title, body, config) {
+  const data = await githubRequest(`/repos/${owner}/${repo}/pulls`, config, {
+    method: "POST",
+    body: JSON.stringify({ title, body, head: branch, base })
+  });
+  return {
+    url: data.html_url,
+    number: data.number
+  };
 }
 
 function snippet(value) {

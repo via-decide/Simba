@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { listOwnerRepos, inspectRepository } from "./github.js";
 import { runExecutionPipeline, STAGES } from "./simba-execution-pipeline.js";
+import { runTask, parseTaskMessage, formatTelegramResult } from "./orchestrator.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -152,7 +153,26 @@ export class SimbaCommandRouter {
       }
 
       if (trimmed.startsWith("/task")) {
-        await this.messenger.sendMessage(chatId, "Legacy /task flow remains available via existing orchestrator CLI path.");
+        const body = trimmed.slice("/task".length).trim();
+        if (!body) {
+          await this.messenger.sendMessage(chatId,
+            "Usage:\n/task\nrepo: owner/repo\nmode: codex | claude | claude_repair | codex_then_claude\ntask: describe what to do\nconstraints: optional\ngoal: optional"
+          );
+          return;
+        }
+        await this.messenger.sendMessage(chatId, "⏳ Running orchestration task...");
+        try {
+          const parsed = parseTaskMessage(body);
+          const result = await runTask(parsed, this.config);
+          await this.messenger.sendMessage(chatId, formatTelegramResult(result));
+        } catch (err) {
+          await this.messenger.sendMessage(chatId, structuredErrorMessage(
+            "Task failed",
+            err.message,
+            true,
+            "Check repo: and task: fields and retry."
+          ));
+        }
         return;
       }
 
