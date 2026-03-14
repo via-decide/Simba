@@ -3,7 +3,8 @@ import {
   getBranchSha,
   createBranch,
   commitFile,
-  createPullRequest
+  createPullRequest,
+  deleteBranch
 } from "./github.js";
 import { writeArtifacts } from "./artifacts.js";
 import {
@@ -151,7 +152,18 @@ export async function runExecutionPipeline({
       await emit("PUSH", `Creating branch ${prPackage.branch} from ${repoAudit.defaultBranch}...`);
       try {
         const baseSha = await getBranchSha(owner, repoName, repoAudit.defaultBranch, config);
-        await createBranch(owner, repoName, prPackage.branch, baseSha, config);
+        try {
+          await createBranch(owner, repoName, prPackage.branch, baseSha, config);
+        } catch (branchErr) {
+          // 422 = branch already exists — delete it and retry once
+          if (branchErr.message.includes("422")) {
+            await emit("PUSH", `Branch already exists, deleting and recreating...`);
+            await deleteBranch(owner, repoName, prPackage.branch, config);
+            await createBranch(owner, repoName, prPackage.branch, baseSha, config);
+          } else {
+            throw branchErr;
+          }
+        }
 
         const artifactDir = `artifacts/${repo.replace("/", "__")}`;
         const files = {
@@ -180,7 +192,7 @@ export async function runExecutionPipeline({
     } else if (!config.allowLivePr) {
       await emit("PR", "Live PR disabled (SIMBA_ALLOW_LIVE_PR != true).");
     } else if (pushResult !== "pushed") {
-      await emit("PR", "PR skipped because push did not succeed.");
+      await emit("PR", `PR skipped — push result: ${pushResult}`);
     } else {
       await emit("PR", "Opening pull request...");
       try {
