@@ -8,6 +8,7 @@ import {
   formatTaskForTelegram
 } from "./task-generator.js";
 import { startLoop, stopLoop, getLoopStatus, isLoopRunning } from "./task-loop.js";
+import { parseTaskMessage, sanitizeTelegram, truncateForTelegram } from "./task-parser.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -182,18 +183,30 @@ export class SimbaCommandRouter {
 
       // ── /task ──
       if (trimmed.startsWith("/task")) {
-        const body = trimmed.slice("/task".length).trim();
+        const body = sanitizeTelegram(trimmed.slice("/task".length).trim());
         if (!body) {
           await this.messenger.sendMessage(
             chatId,
-            "Usage:\n/task\nrepo: owner/repo\nmode: codex | claude | claude_repair | codex_then_claude\ntask: what to do\nconstraints: optional\ngoal: optional"
+            "Usage:\n/task\nrepo: owner/repo\nmode: codex | claude | claude_repair | codex_then_claude\ntask: what to do\nconstraints: optional\ngoal: optional\n\nOr JSON:\n/task {\"repo\":\"owner/repo\",\"task\":\"what to do\"}"
           );
           return;
         }
         await this.messenger.sendMessage(chatId, "⏳ Running task...");
+
+        let parsed;
         try {
-          const parsed = parseTaskFields(body);
-          const taskId = crypto.randomUUID();
+          parsed = parseTaskMessage(body);
+        } catch (parseErr) {
+          console.error(`[${chatId}] /task parse error:`, parseErr.message);
+          await this.messenger.sendMessage(
+            chatId,
+            errMsg("Task parse failed", parseErr.message, true, "Check formatting and retry.")
+          );
+          return;
+        }
+
+        const taskId = crypto.randomUUID();
+        try {
           const task = await runExecutionPipeline({
             taskId,
             chatId,
@@ -206,12 +219,13 @@ export class SimbaCommandRouter {
             config: this.config,
             stateEngine: this.stateEngine,
             onStageUpdate: async ({ stage, details }) => {
-              await this.messenger.sendMessage(chatId, `[${stage}] ${details}`);
+              await this.messenger.sendMessage(chatId, `[${stage}] ${truncateForTelegram(details)}`);
             }
           });
           await this._sendTaskResult(chatId, task);
         } catch (err) {
-          await this.messenger.sendMessage(chatId, errMsg("Task failed", err.message, true, "Check repo/task fields."));
+          console.error(`[${chatId}] /task pipeline error:`, err.message);
+          await this.messenger.sendMessage(chatId, errMsg("Task failed", err.message, true, "Check repo/task fields or /resume."));
         }
         return;
       }
@@ -567,26 +581,4 @@ export class SimbaCommandRouter {
   }
 }
 
-function parseTaskFields(message) {
-  const lines = message.split("\n").map((l) => l.trim()).filter(Boolean);
-  const map = {};
-  for (const line of lines) {
-    const idx = line.indexOf(":");
-    if (idx === -1) continue;
-    map[line.slice(0, idx).trim().toLowerCase()] = line.slice(idx + 1).trim();
-  }
 
-  const parsed = {
-    targetRepo: map.repo || map.target_repo || "",
-    mode: (map.mode || "codex_then_claude").toLowerCase(),
-    taskDescription: map.task || map.description || "",
-    constraints: map.constraints || "",
-    goal: map.goal || ""
-  };
-
-  if (!parsed.targetRepo || !parsed.taskDescription) {
-    throw new Error("Requires repo: owner/name and task: description");
-  }
-
-  return parsed;
-}
