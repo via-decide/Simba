@@ -1,6 +1,13 @@
 import crypto from "node:crypto";
 import { listOwnerRepos, inspectRepository, listRepoBranches, deleteBranch } from "./github.js";
 import { runExecutionPipeline, STAGES } from "./simba-execution-pipeline.js";
+import {
+  generateTasks,
+  getCatalogSummary,
+  formatTaskListForTelegram,
+  formatTaskForTelegram
+} from "./task-generator.js";
+import { startLoop, stopLoop, getLoopStatus, isLoopRunning } from "./task-loop.js";
 
 function nowIso() {
   return new Date().toISOString();
@@ -66,7 +73,16 @@ const HELP_TEXT = `Simba Bot v2 Commands:
 /cancel — cancel active task
 /branches <owner/repo> — list simba/* branches
 /cleanup <owner/repo> — delete stale simba/* branches
-/resume — re-run last failed task`;
+/resume — re-run last failed task
+
+Task Generation:
+/catalog — show tool catalog by category
+/generate [category] — generate task list (games, business, etc)
+/queue — show pending/completed/failed task queue
+/queue clear — reset task queue
+/loop start [dry|live] — start continuous task execution
+/loop stop — stop loop after current task
+/loop status — show loop state`;
 
 export class SimbaCommandRouter {
   constructor({ config, stateEngine, messenger }) {
@@ -310,6 +326,155 @@ export class SimbaCommandRouter {
           }
         });
         await this._sendTaskResult(chatId, result);
+        return;
+      }
+
+      // ── /catalog ──
+      if (trimmed.startsWith("/catalog")) {
+        const summary = getCatalogSummary();
+        const lines = Object.entries(summary).map(
+          ([cat, info]) => `${cat} (${info.total}): ${info.tools.join(", ")}`
+        );
+        await this.messenger.sendMessage(chatId, `📦 Tool Catalog:\n${lines.join("\n")}`);
+        return;
+      }
+
+      // ── /generate ──
+      if (trimmed.startsWith("/generate")) {
+        const arg = trimmed.slice("/generate".length).trim();
+        const categories = arg ? arg.split(/[\s,]+/).filter(Boolean) : null;
+
+        await this.messenger.sendMessage(chatId, "🔍 Analyzing repo and generating tasks...");
+
+        const taskQueue = await this.stateEngine.getTaskQueue(chatId);
+        const excludeIds = new Set([
+          ...taskQueue.completed.map((t) => t.toolId),
+          ...taskQueue.pending.map((t) => t.toolId)
+        ].filter(Boolean));
+
+        const tasks = await generateTasks(this.config, {
+          categories,
+          maxTasks: 20,
+          excludeIds
+        });
+
+        const list = formatTaskListForTelegram(tasks);
+        await this.messenger.sendMessage(chatId, `📋 Generated ${tasks.length} tasks:\n${list}`);
+
+        if (tasks.length > 0) {
+          await this.messenger.sendMessage(
+            chatId,
+            "Use /loop start dry to execute in dry-run, or /loop start live for real PRs."
+          );
+        }
+        return;
+      }
+
+      // ── /queue ──
+      if (trimmed.startsWith("/queue")) {
+        const arg = trimmed.slice("/queue".length).trim();
+
+        if (arg === "clear") {
+          await this.stateEngine.clearTaskQueue(chatId);
+          await this.messenger.sendMessage(chatId, "Task queue cleared.");
+          return;
+        }
+
+        const q = await this.stateEngine.getTaskQueue(chatId);
+        const lines = [
+          `📊 Task Queue`,
+          `Pending: ${q.pending.length}`,
+          `Completed: ${q.completed.length}`,
+          `Failed: ${q.failed.length}`
+        ];
+
+        if (q.completed.length > 0) {
+          lines.push("\n✅ Completed:");
+          for (const t of q.completed.slice(-10)) {
+            const pr = t.prUrl ? ` → ${t.prUrl}` : "";
+            lines.push(`  ${t.toolId || t.taskId?.slice(0, 8)}${pr}`);
+          }
+        }
+
+        if (q.failed.length > 0) {
+          lines.push("\n❌ Failed:");
+          for (const t of q.failed.slice(-5)) {
+            lines.push(`  ${t.toolId || t.taskId?.slice(0, 8)}: ${t.error || "unknown"}`);
+          }
+        }
+
+        if (q.pending.length > 0) {
+          lines.push("\n⏳ Pending:");
+          for (const t of q.pending.slice(-10)) {
+            lines.push(`  ${t.toolId || t.taskId?.slice(0, 8)} [${t.category || "?"}]`);
+          }
+        }
+
+        await this.messenger.sendMessage(chatId, lines.join("\n"));
+        return;
+      }
+
+      // ── /loop ──
+      if (trimmed.startsWith("/loop")) {
+        const args = trimmed.slice("/loop".length).trim().split(/\s+/);
+        const subCommand = args[0] || "";
+
+        if (subCommand === "stop") {
+          const stopped = stopLoop(chatId);
+          await this.messenger.sendMessage(
+            chatId,
+            stopped ? "⏹ Loop will stop after current task." : "No loop running."
+          );
+          return;
+        }
+
+        if (subCommand === "status") {
+          const status = getLoopStatus(chatId);
+          if (!status) {
+            await this.messenger.sendMessage(chatId, "No loop active.");
+          } else {
+            await this.messenger.sendMessage(chatId, [
+              `🔄 Loop Status`,
+              `Running: ${status.running}`,
+              `Completed: ${status.tasksCompleted}`,
+              `Failed: ${status.tasksFailed}`,
+              `Mode: ${status.dryRun ? "dry-run" : "live"}`,
+              `Started: ${status.startedAt}`
+            ].join("\n"));
+          }
+          return;
+        }
+
+        if (subCommand === "start") {
+          const mode = args[1] || "dry";
+          const dryRun = mode !== "live";
+          const categoryArg = args[2];
+          const categories = categoryArg ? categoryArg.split(",") : null;
+
+          // Run loop asynchronously (don't await — it runs in background)
+          startLoop({
+            chatId,
+            config: this.config,
+            stateEngine: this.stateEngine,
+            messenger: this.messenger,
+            dryRun,
+            delayMs: 10_000,
+            maxTasks: 50,
+            categories
+          }).catch(async (err) => {
+            await this.messenger.sendMessage(
+              chatId,
+              errMsg("Loop crashed", err.message, true, "/loop start")
+            );
+          });
+
+          return;
+        }
+
+        await this.messenger.sendMessage(
+          chatId,
+          "Usage: /loop start [dry|live] [category] | /loop stop | /loop status"
+        );
         return;
       }
 

@@ -142,4 +142,40 @@ export class SimbaStateEngine {
     });
     return taskId;
   }
+
+  // ─── Task queue (for task-generator loop) ───
+
+  async getTaskQueue(chatId) {
+    const chat = await this.getChatState(chatId);
+    const queue = chat.taskQueue || [];
+    return {
+      all: queue,
+      pending: queue.filter((t) => t.status === "pending"),
+      completed: queue.filter((t) => t.status === "completed"),
+      failed: queue.filter((t) => t.status === "failed")
+    };
+  }
+
+  async addToTaskQueue(chatId, item) {
+    return this.upsertChatState(chatId, (chat) => {
+      const queue = [...(chat.taskQueue || []), item];
+      return { ...chat, taskQueue: queue };
+    });
+  }
+
+  async updateTaskQueueItem(chatId, taskId, patch) {
+    return this.upsertChatState(chatId, (chat) => {
+      const queue = (chat.taskQueue || []).map((item) => {
+        if (item.taskId === taskId) return { ...item, ...patch };
+        return item;
+      });
+      return { ...chat, taskQueue: queue };
+    });
+  }
+
+  async clearTaskQueue(chatId) {
+    return this.upsertChatState(chatId, (chat) => {
+      return { ...chat, taskQueue: [] };
+    });
+  }
 }
