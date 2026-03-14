@@ -25,7 +25,15 @@ export class SimbaStateEngine {
       return JSON.parse(raw);
     } catch (error) {
       if (error.code === "ENOENT") return { chats: {} };
-      throw error;
+      // State file corrupt (bad JSON, truncated write, disk issue).
+      // Back it up and reset — never crash the pipeline over state file issues.
+      console.error("[state] State file corrupt, resetting. Error:", error.message);
+      try {
+        const backup = this.stateFilePath + ".corrupt-" + Date.now();
+        await fs.rename(this.stateFilePath, backup).catch(() => {});
+        console.error("[state] Backed up corrupt file to:", backup);
+      } catch { /* best-effort */ }
+      return { chats: {} };
     }
   }
 
