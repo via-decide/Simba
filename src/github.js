@@ -3,7 +3,8 @@ const JSON_HEADERS = {
 };
 
 async function githubRequest(path, config, options = {}) {
-  const response = await fetch(`${config.githubApiBaseUrl}${path}`, {
+  const url = `${config.githubApiBaseUrl}${path}`;
+  const response = await fetch(url, {
     headers: {
       ...JSON_HEADERS,
       Authorization: `Bearer ${config.githubToken}`,
@@ -14,7 +15,7 @@ async function githubRequest(path, config, options = {}) {
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`GitHub API error ${response.status} on ${path}: ${body}`);
+    throw new Error(`GitHub API ${response.status} on ${path}: ${body}`);
   }
 
   return response.json();
@@ -22,8 +23,15 @@ async function githubRequest(path, config, options = {}) {
 
 export async function listOwnerRepos(config) {
   try {
-    const repos = await githubRequest(`/users/${config.githubOwner}/repos?per_page=${config.githubRepoScanLimit}&sort=updated`, config)
-      .catch(async () => githubRequest(`/orgs/${config.githubOwner}/repos?per_page=${config.githubRepoScanLimit}&sort=updated`, config));
+    const repos = await githubRequest(
+      `/users/${config.githubOwner}/repos?per_page=${config.githubRepoScanLimit}&sort=updated`,
+      config
+    ).catch(() =>
+      githubRequest(
+        `/orgs/${config.githubOwner}/repos?per_page=${config.githubRepoScanLimit}&sort=updated`,
+        config
+      )
+    );
 
     return repos.map((repo) => ({
       name: repo.name,
@@ -35,41 +43,42 @@ export async function listOwnerRepos(config) {
       archived: repo.archived
     }));
   } catch (error) {
-    return [{
-      name: config.githubOwner,
-      fullName: `${config.githubOwner}/(repo-list-unavailable)`,
-      description: `Repository listing unavailable: ${error.message}`,
-      defaultBranch: "unknown",
-      language: "unknown",
-      visibility: "unknown",
-      archived: false
-    }];
+    return [
+      {
+        name: config.githubOwner,
+        fullName: `${config.githubOwner}/(repo-list-unavailable)`,
+        description: `Repository listing unavailable: ${error.message}`,
+        defaultBranch: "unknown",
+        language: "unknown",
+        visibility: "unknown",
+        archived: false
+      }
+    ];
   }
 }
 
-async function getFileContent(owner, repo, path, ref, config) {
-  const encodedPath = encodeURIComponent(path);
-  const response = await fetch(`${config.githubApiBaseUrl}/repos/${owner}/${repo}/contents/${encodedPath}?ref=${encodeURIComponent(ref)}`, {
-    headers: {
-      ...JSON_HEADERS,
-      Authorization: `Bearer ${config.githubToken}`,
-      "X-GitHub-Api-Version": "2022-11-28"
+async function getFileContent(owner, repo, filePath, ref, config) {
+  const encoded = encodeURIComponent(filePath);
+  const response = await fetch(
+    `${config.githubApiBaseUrl}/repos/${owner}/${repo}/contents/${encoded}?ref=${encodeURIComponent(ref)}`,
+    {
+      headers: {
+        ...JSON_HEADERS,
+        Authorization: `Bearer ${config.githubToken}`,
+        "X-GitHub-Api-Version": "2022-11-28"
+      }
     }
-  });
+  );
 
-  if (response.status === 404) {
-    return null;
-  }
+  if (response.status === 404) return null;
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`GitHub file fetch error ${response.status} for ${owner}/${repo}/${path}: ${body}`);
+    throw new Error(`GitHub file fetch ${response.status} for ${owner}/${repo}/${filePath}: ${body}`);
   }
 
   const data = await response.json();
-  if (data.encoding !== "base64" || !data.content) {
-    return null;
-  }
+  if (data.encoding !== "base64" || !data.content) return null;
 
   return Buffer.from(data.content, "base64").toString("utf8");
 }
@@ -81,18 +90,20 @@ export async function inspectRepository(targetRepo, config) {
   }
 
   try {
-    const repoMeta = await githubRequest(`/repos/${owner}/${repo}`, config);
+    const meta = await githubRequest(`/repos/${owner}/${repo}`, config);
 
-    const readme = await getFileContent(owner, repo, "README.md", repoMeta.default_branch, config);
-    const agents = await getFileContent(owner, repo, "AGENTS.md", repoMeta.default_branch, config);
-    const pkg = await getFileContent(owner, repo, "package.json", repoMeta.default_branch, config);
-    const pyproject = await getFileContent(owner, repo, "pyproject.toml", repoMeta.default_branch, config);
+    const [readme, agents, pkg, pyproject] = await Promise.all([
+      getFileContent(owner, repo, "README.md", meta.default_branch, config),
+      getFileContent(owner, repo, "AGENTS.md", meta.default_branch, config),
+      getFileContent(owner, repo, "package.json", meta.default_branch, config),
+      getFileContent(owner, repo, "pyproject.toml", meta.default_branch, config)
+    ]);
 
     return {
       targetRepo,
-      defaultBranch: repoMeta.default_branch,
-      language: repoMeta.language || "unknown",
-      description: repoMeta.description || "",
+      defaultBranch: meta.default_branch,
+      language: meta.language || "unknown",
+      description: meta.description || "",
       readmeSnippet: snippet(readme),
       agentsSnippet: snippet(agents),
       packageSnippet: snippet(pkg),
@@ -104,7 +115,7 @@ export async function inspectRepository(targetRepo, config) {
       targetRepo,
       defaultBranch: "main",
       language: "unknown",
-      description: `Repository audit fallback used: ${error.message}`,
+      description: `Audit fallback: ${error.message}`,
       readmeSnippet: "not found",
       agentsSnippet: "not found",
       packageSnippet: "not found",
@@ -114,25 +125,24 @@ export async function inspectRepository(targetRepo, config) {
   }
 }
 
-/** Get the SHA of the HEAD commit on a branch */
 export async function getBranchSha(owner, repo, branch, config) {
-  const data = await githubRequest(`/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`, config);
+  const data = await githubRequest(
+    `/repos/${owner}/${repo}/git/ref/heads/${encodeURIComponent(branch)}`,
+    config
+  );
   return data.object.sha;
 }
 
-/** Create a new branch from a base SHA */
 export async function createBranch(owner, repo, branchName, baseSha, config) {
-  await githubRequest(`/repos/${owner}/${repo}/git/refs`, config, {
+  return githubRequest(`/repos/${owner}/${repo}/git/refs`, config, {
     method: "POST",
     body: JSON.stringify({ ref: `refs/heads/${branchName}`, sha: baseSha })
   });
 }
 
-/** Commit a single file to a branch (create or update) */
 export async function commitFile(owner, repo, filePath, content, message, branch, config) {
   const encoded = Buffer.from(content, "utf8").toString("base64");
 
-  // Check if file already exists to get its SHA (needed for update)
   let sha;
   try {
     const existing = await githubRequest(
@@ -147,22 +157,44 @@ export async function commitFile(owner, repo, filePath, content, message, branch
   const body = { message, content: encoded, branch };
   if (sha) body.sha = sha;
 
-  await githubRequest(`/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`, config, {
-    method: "PUT",
-    body: JSON.stringify(body)
-  });
+  return githubRequest(
+    `/repos/${owner}/${repo}/contents/${encodeURIComponent(filePath)}`,
+    config,
+    { method: "PUT", body: JSON.stringify(body) }
+  );
 }
 
-/** Create a pull request and return its URL */
 export async function createPullRequest(owner, repo, branch, base, title, body, config) {
   const data = await githubRequest(`/repos/${owner}/${repo}/pulls`, config, {
     method: "POST",
     body: JSON.stringify({ title, body, head: branch, base })
   });
-  return {
-    url: data.html_url,
-    number: data.number
-  };
+  return { url: data.html_url, number: data.number };
+}
+
+export async function deleteBranch(owner, repo, branchName, config) {
+  const url = `${config.githubApiBaseUrl}/repos/${owner}/${repo}/git/refs/heads/${encodeURIComponent(branchName)}`;
+  const response = await fetch(url, {
+    method: "DELETE",
+    headers: {
+      ...JSON_HEADERS,
+      Authorization: `Bearer ${config.githubToken}`,
+      "X-GitHub-Api-Version": "2022-11-28"
+    }
+  });
+  if (!response.ok && response.status !== 422) {
+    const text = await response.text();
+    throw new Error(`Branch delete failed ${response.status}: ${text}`);
+  }
+}
+
+export async function listRepoBranches(owner, repo, config, prefix = "") {
+  const data = await githubRequest(
+    `/repos/${owner}/${repo}/branches?per_page=100`,
+    config
+  );
+  const branches = data.map((b) => b.name);
+  return prefix ? branches.filter((b) => b.startsWith(prefix)) : branches;
 }
 
 function snippet(value) {
