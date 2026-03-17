@@ -3,26 +3,32 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Simba Upgrade Config Builder</title>
+  <title>SkillHex SPA</title>
   <style>
     :root {
       color-scheme: light dark;
-      --bg: #f6f8fb;
+      --bg: #f4f6fb;
       --surface: #ffffff;
-      --text: #101828;
-      --muted: #475467;
-      --accent: #0d6efd;
-      --border: #d0d5dd;
+      --surface-2: #eef2ff;
+      --text: #0f172a;
+      --muted: #475569;
+      --accent: #4f46e5;
+      --accent-2: #3730a3;
+      --border: #dbe1eb;
+      --danger: #dc2626;
     }
 
     @media (prefers-color-scheme: dark) {
       :root {
-        --bg: #111827;
-        --surface: #1f2937;
-        --text: #f9fafb;
-        --muted: #d1d5db;
-        --accent: #60a5fa;
-        --border: #374151;
+        --bg: #0b1120;
+        --surface: #111827;
+        --surface-2: #1f2937;
+        --text: #e2e8f0;
+        --muted: #9ca3af;
+        --accent: #818cf8;
+        --accent-2: #6366f1;
+        --border: #334155;
+        --danger: #f87171;
       }
     }
 
@@ -33,291 +39,425 @@
       font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background: var(--bg);
       color: var(--text);
-      line-height: 1.5;
     }
 
     .wrap {
-      max-width: 980px;
+      width: min(1060px, 92vw);
       margin: 0 auto;
-      padding: 24px 16px 48px;
+      padding: 20px 0 36px;
     }
 
-    h1 { margin: 0 0 8px; font-size: 1.8rem; }
-    .sub { margin: 0 0 24px; color: var(--muted); }
-
-    .card {
+    .navbar {
       background: var(--surface);
       border: 1px solid var(--border);
       border-radius: 12px;
-      padding: 16px;
-      margin-bottom: 16px;
+      padding: 12px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
     }
 
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 12px;
+    .brand {
+      font-size: 1.1rem;
+      font-weight: 700;
     }
-
-    label {
-      display: block;
-      font-size: 0.9rem;
-      margin-bottom: 6px;
-      font-weight: 600;
-    }
-
-    input, textarea, select, button {
-      width: 100%;
-      border: 1px solid var(--border);
-      border-radius: 8px;
-      padding: 10px 12px;
-      font: inherit;
-      color: inherit;
-      background: transparent;
-    }
-
-    textarea { min-height: 88px; resize: vertical; }
 
     .actions {
       display: flex;
+      gap: 8px;
       flex-wrap: wrap;
-      gap: 10px;
-      margin-top: 12px;
+    }
+
+    button, input {
+      font: inherit;
+      border: 1px solid var(--border);
+      border-radius: 9px;
+      padding: 10px 12px;
+      color: inherit;
+      background: transparent;
     }
 
     button {
       cursor: pointer;
       font-weight: 600;
-      transition: transform 0.05s ease;
     }
 
-    button.primary {
+    .btn-primary {
       background: var(--accent);
       border-color: var(--accent);
       color: #fff;
     }
 
-    button:active { transform: translateY(1px); }
+    .btn-primary:hover { background: var(--accent-2); }
+    .btn-danger { border-color: var(--danger); color: var(--danger); }
 
-    .hint {
-      margin: 8px 0 0;
-      color: var(--muted);
-      font-size: 0.9rem;
-    }
-
-    .pill {
-      display: inline-block;
-      margin-right: 6px;
-      margin-top: 6px;
+    .card {
+      margin-top: 14px;
+      background: var(--surface);
       border: 1px solid var(--border);
-      border-radius: 999px;
-      padding: 4px 10px;
-      font-size: 0.85rem;
-      color: var(--muted);
+      border-radius: 12px;
+      padding: 16px;
     }
 
-    #status { min-height: 1.4em; font-size: 0.9rem; color: var(--muted); }
+    .muted { color: var(--muted); }
+
+    .dashboard { display: none; }
+    .dashboard.active { display: block; }
+
+    .grid {
+      margin-top: 10px;
+      display: grid;
+      gap: 10px;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    }
+
+    .tile {
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      background: var(--surface-2);
+    }
+
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(2, 6, 23, 0.55);
+      display: none;
+      place-items: center;
+      padding: 14px;
+      z-index: 100;
+    }
+
+    .modal.open { display: grid; }
+
+    .modal-card {
+      width: min(460px, 96vw);
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+    }
+
+    .stack > * + * { margin-top: 10px; }
+
+    .tabs {
+      display: flex;
+      gap: 6px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 4px;
+    }
+
+    .tab {
+      flex: 1;
+      border: 0;
+      border-radius: 8px;
+      background: transparent;
+    }
+
+    .tab.active {
+      background: var(--accent);
+      color: #fff;
+    }
+
+    label { display: block; font-size: 0.92rem; font-weight: 600; }
+    input { width: 100%; margin-top: 4px; }
+
+    .row {
+      margin-top: 12px;
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .status {
+      min-height: 1.3em;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 0.92rem;
+    }
+
+    .analytics {
+      margin-top: 8px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 12px;
+      overflow: auto;
+      background: #fff;
+    }
+
+    svg text { font-family: Inter, system-ui, sans-serif; }
   </style>
 </head>
 <body>
   <main class="wrap">
-    <h1>Upgrade / Change Config Builder</h1>
-    <p class="sub">Use this page (for example on GitHub Pages), copy the generated text, and paste it into chat so I can apply upgrades quickly and accurately.</p>
+    <nav class="navbar">
+      <div>
+        <div class="brand">SkillHex</div>
+        <div class="muted" id="sessionLabel">Signed out</div>
+      </div>
+      <div class="actions" id="guestActions">
+        <button id="openLogin" class="btn-primary" type="button">Login</button>
+        <button id="openSignup" type="button">Signup</button>
+      </div>
+      <div class="actions" id="authActions" hidden>
+        <button id="logoutBtn" class="btn-danger" type="button">Logout</button>
+      </div>
+    </nav>
 
-    <section class="card">
-      <h2>Project Context</h2>
+    <section class="card dashboard" id="guestView">
+      <h2>Welcome to SkillHex</h2>
+      <p class="muted">Login or signup to continue as a Player or Recruiter.</p>
+    </section>
+
+    <section class="card dashboard" id="playerView">
+      <h2>Player Dashboard</h2>
+      <p class="muted">Track your challenge progress and export performance insights.</p>
       <div class="grid">
-        <div>
-          <label for="projectName">Project name</label>
-          <input id="projectName" placeholder="Simba" />
-        </div>
-        <div>
-          <label for="repoUrl">Repo URL</label>
-          <input id="repoUrl" placeholder="https://github.com/you/repo" />
-        </div>
-        <div>
-          <label for="branch">Target branch</label>
-          <input id="branch" placeholder="main" />
-        </div>
-        <div>
-          <label for="priority">Priority</label>
-          <select id="priority">
-            <option>Low</option>
-            <option selected>Medium</option>
-            <option>High</option>
-            <option>Critical</option>
-          </select>
-        </div>
+        <article class="tile"><strong>Level</strong><div>Platinum Candidate</div></article>
+        <article class="tile"><strong>Completed drills</strong><div>42 this month</div></article>
+        <article class="tile"><strong>Skill score</strong><div>87 / 100</div></article>
+      </div>
+      <div class="analytics">
+        <svg id="analyticsSvg" width="620" height="210" viewBox="0 0 620 210" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="SkillHex analytics chart">
+          <rect x="0" y="0" width="620" height="210" fill="#f8fafc"></rect>
+          <text x="20" y="30" fill="#0f172a" font-size="18" font-weight="700">SkillHex Performance Snapshot</text>
+          <line x1="50" y1="170" x2="580" y2="170" stroke="#94a3b8" stroke-width="1.5"/>
+          <line x1="50" y1="50" x2="50" y2="170" stroke="#94a3b8" stroke-width="1.5"/>
+          <polyline points="80,150 170,130 260,138 350,105 440,90 530,72" fill="none" stroke="#4f46e5" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="80" cy="150" r="4" fill="#4f46e5"/>
+          <circle cx="170" cy="130" r="4" fill="#4f46e5"/>
+          <circle cx="260" cy="138" r="4" fill="#4f46e5"/>
+          <circle cx="350" cy="105" r="4" fill="#4f46e5"/>
+          <circle cx="440" cy="90" r="4" fill="#4f46e5"/>
+          <circle cx="530" cy="72" r="4" fill="#4f46e5"/>
+          <text x="70" y="188" fill="#475569" font-size="11">W1</text>
+          <text x="160" y="188" fill="#475569" font-size="11">W2</text>
+          <text x="250" y="188" fill="#475569" font-size="11">W3</text>
+          <text x="340" y="188" fill="#475569" font-size="11">W4</text>
+          <text x="430" y="188" fill="#475569" font-size="11">W5</text>
+          <text x="520" y="188" fill="#475569" font-size="11">W6</text>
+        </svg>
+      </div>
+      <div class="row" style="justify-content:flex-start; margin-top: 10px;">
+        <button id="downloadSvgBtn" type="button">Download SVG Report</button>
       </div>
     </section>
 
-    <section class="card">
-      <h2>What should be changed?</h2>
-      <label for="goal">Primary goal</label>
-      <textarea id="goal" placeholder="What do you want upgraded or changed?"></textarea>
-
-      <label for="scope">Scope / files / modules</label>
-      <textarea id="scope" placeholder="Which pages, APIs, components, or folders are in scope?"></textarea>
-
-      <label for="constraints">Constraints (must / must not)</label>
-      <textarea id="constraints" placeholder="Coding style, forbidden libraries, deadlines, compatibility requirements..."></textarea>
-
-      <label for="acceptance">Acceptance criteria</label>
-      <textarea id="acceptance" placeholder="How should we verify that this task is complete?"></textarea>
-    </section>
-
-    <section class="card">
-      <h2>Environment & Stack</h2>
+    <section class="card dashboard" id="recruiterView">
+      <h2>Recruiter Dashboard</h2>
+      <p class="muted">Review top prospects and compare verified skill trajectories.</p>
       <div class="grid">
-        <div>
-          <label for="languages">Languages</label>
-          <input id="languages" placeholder="TypeScript, Python" />
-        </div>
-        <div>
-          <label for="frameworks">Frameworks</label>
-          <input id="frameworks" placeholder="React, FastAPI" />
-        </div>
-        <div>
-          <label for="runtime">Runtime / toolchain</label>
-          <input id="runtime" placeholder="Node 20, Python 3.11" />
-        </div>
-        <div>
-          <label for="tests">Preferred test command</label>
-          <input id="tests" placeholder="npm test" />
-        </div>
+        <article class="tile"><strong>Open roles</strong><div>8 active reqs</div></article>
+        <article class="tile"><strong>Shortlisted talent</strong><div>23 candidates</div></article>
+        <article class="tile"><strong>Interview-ready</strong><div>11 this week</div></article>
       </div>
-      <p>
-        <span class="pill">Tip: keep this short</span>
-        <span class="pill">Tip: include version targets</span>
-        <span class="pill">Tip: mention deployment platform</span>
-      </p>
-    </section>
-
-    <section class="card">
-      <h2>Generated prompt to paste in chat</h2>
-      <textarea id="output" readonly placeholder="Click Generate Config"></textarea>
-      <div class="actions">
-        <button class="primary" id="generateBtn" type="button">Generate Config</button>
-        <button id="copyBtn" type="button">Copy</button>
-        <button id="downloadBtn" type="button">Download JSON</button>
-        <button id="loadBtn" type="button">Load JSON</button>
-        <input id="fileInput" type="file" accept="application/json" hidden />
-      </div>
-      <p id="status" aria-live="polite"></p>
     </section>
   </main>
 
+  <section id="loginModal" class="modal" aria-hidden="true">
+    <div class="modal-card">
+      <h3>Login</h3>
+      <form id="loginForm" class="stack">
+        <label>Email<input required name="email" type="email" placeholder="name@skillhex.com" /></label>
+        <label>Password<input required name="password" type="password" minlength="6" placeholder="••••••••" /></label>
+        <label>Role
+          <select name="role" required>
+            <option value="player">Player</option>
+            <option value="recruiter">Recruiter</option>
+          </select>
+        </label>
+        <div class="row">
+          <button type="button" data-close="#loginModal">Cancel</button>
+          <button class="btn-primary" type="submit">Login</button>
+        </div>
+      </form>
+      <div class="status" id="loginStatus"></div>
+    </div>
+  </section>
+
+  <section id="signupModal" class="modal" aria-hidden="true">
+    <div class="modal-card">
+      <h3>Signup</h3>
+      <div class="tabs" id="signupRoleTabs">
+        <button type="button" class="tab active" data-role="player">Player</button>
+        <button type="button" class="tab" data-role="recruiter">Recruiter</button>
+      </div>
+      <form id="signupForm" class="stack" style="margin-top: 10px;">
+        <input type="hidden" name="role" value="player" />
+        <label>Full name<input required name="name" type="text" placeholder="Your name" /></label>
+        <label>Email<input required name="email" type="email" placeholder="name@skillhex.com" /></label>
+        <label>Password<input required name="password" minlength="6" type="password" placeholder="At least 6 characters" /></label>
+        <div class="row">
+          <button type="button" data-close="#signupModal">Cancel</button>
+          <button class="btn-primary" type="submit">Create account</button>
+        </div>
+      </form>
+      <div class="status" id="signupStatus"></div>
+    </div>
+  </section>
+
   <script>
-    const fields = [
-      "projectName", "repoUrl", "branch", "priority", "goal", "scope",
-      "constraints", "acceptance", "languages", "frameworks", "runtime", "tests"
-    ];
+    const STORAGE_KEYS = {
+      SESSION: "skillhex-session",
+      USERS: "skillhex-users"
+    };
 
-    const $ = (id) => document.getElementById(id);
+    const $ = (selector) => document.querySelector(selector);
+    const $$ = (selector) => Array.from(document.querySelectorAll(selector));
 
-    const getData = () => fields.reduce((obj, id) => {
-      obj[id] = $(id).value.trim();
-      return obj;
-    }, {});
+    const encode = (data) => btoa(unescape(encodeURIComponent(JSON.stringify(data))));
+    const decode = (value) => {
+      try {
+        return JSON.parse(decodeURIComponent(escape(atob(value))));
+      } catch {
+        return null;
+      }
+    };
 
-    const setData = (data) => {
-      fields.forEach((id) => {
-        if (typeof data[id] === "string") {
-          $(id).value = data[id];
-        }
+    const readStore = (key, fallback) => {
+      const raw = localStorage.getItem(key);
+      if (!raw) return fallback;
+      const parsed = decode(raw);
+      return parsed ?? fallback;
+    };
+
+    const writeStore = (key, value) => {
+      localStorage.setItem(key, encode(value));
+    };
+
+    const upsertUser = (user) => {
+      const users = readStore(STORAGE_KEYS.USERS, []);
+      const index = users.findIndex((entry) => entry.email === user.email && entry.role === user.role);
+      if (index >= 0) users[index] = user;
+      else users.push(user);
+      writeStore(STORAGE_KEYS.USERS, users);
+    };
+
+    const setSession = ({ email, role, name }) => {
+      writeStore(STORAGE_KEYS.SESSION, {
+        token: crypto.randomUUID(),
+        email,
+        role,
+        name,
+        createdAt: Date.now()
       });
+      render();
     };
 
-    const buildPrompt = (d) => {
-      return [
-        "Task Configuration",
-        "==================",
-        `Project: ${d.projectName || "(not provided)"}`,
-        `Repository: ${d.repoUrl || "(not provided)"}`,
-        `Branch: ${d.branch || "(not provided)"}`,
-        `Priority: ${d.priority || "Medium"}`,
-        "",
-        "Goal:",
-        d.goal || "(not provided)",
-        "",
-        "Scope:",
-        d.scope || "(not provided)",
-        "",
-        "Constraints:",
-        d.constraints || "(not provided)",
-        "",
-        "Acceptance Criteria:",
-        d.acceptance || "(not provided)",
-        "",
-        "Environment:",
-        `- Languages: ${d.languages || "(not provided)"}`,
-        `- Frameworks: ${d.frameworks || "(not provided)"}`,
-        `- Runtime/toolchain: ${d.runtime || "(not provided)"}`,
-        `- Preferred tests: ${d.tests || "(not provided)"}`,
-        "",
-        "Please implement this task and explain important tradeoffs."
-      ].join("\n");
+    const clearSession = () => {
+      localStorage.removeItem(STORAGE_KEYS.SESSION);
+      render();
     };
 
-    const setStatus = (msg) => { $("status").textContent = msg; };
+    const getSession = () => {
+      const session = readStore(STORAGE_KEYS.SESSION, null);
+      if (!session || !session.email || !session.role) return null;
+      return session;
+    };
 
-    $("generateBtn").addEventListener("click", () => {
-      const data = getData();
-      $("output").value = buildPrompt(data);
-      localStorage.setItem("simba-config", JSON.stringify(data));
-      setStatus("Generated. Copy and paste this into chat.");
-    });
+    const render = () => {
+      const session = getSession();
+      const role = session?.role;
+      $("#guestActions").hidden = !!session;
+      $("#authActions").hidden = !session;
+      $("#sessionLabel").textContent = session ? `${session.name || session.email} (${role})` : "Signed out";
 
-    $("copyBtn").addEventListener("click", async () => {
-      const out = $("output");
-      if (!out.value.trim()) {
-        setStatus("Generate the config first.");
+      $$(".dashboard").forEach((el) => el.classList.remove("active"));
+      if (!session) {
+        $("#guestView").classList.add("active");
         return;
       }
-      try {
-        await navigator.clipboard.writeText(out.value);
-        setStatus("Copied to clipboard.");
-      } catch {
-        out.select();
-        document.execCommand("copy");
-        setStatus("Copied (fallback). If blocked, copy manually.");
-      }
+      if (role === "player") $("#playerView").classList.add("active");
+      if (role === "recruiter") $("#recruiterView").classList.add("active");
+    };
+
+    const openModal = (id) => {
+      const modal = $(id);
+      if (!modal) return;
+      modal.classList.add("open");
+      modal.setAttribute("aria-hidden", "false");
+    };
+
+    const closeModal = (id) => {
+      const modal = $(id);
+      if (!modal) return;
+      modal.classList.remove("open");
+      modal.setAttribute("aria-hidden", "true");
+    };
+
+    $("#openLogin").addEventListener("click", () => openModal("#loginModal"));
+    $("#openSignup").addEventListener("click", () => openModal("#signupModal"));
+    $("#logoutBtn").addEventListener("click", clearSession);
+
+    $$('[data-close]').forEach((btn) => {
+      btn.addEventListener("click", () => closeModal(btn.dataset.close));
     });
 
-    $("downloadBtn").addEventListener("click", () => {
-      const data = getData();
-      const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+    $("#signupRoleTabs").addEventListener("click", (event) => {
+      const tab = event.target.closest(".tab");
+      if (!tab) return;
+      const role = tab.dataset.role;
+      $("#signupForm [name='role']").value = role;
+      $$("#signupRoleTabs .tab").forEach((node) => node.classList.toggle("active", node === tab));
+    });
+
+    $("#signupForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const user = {
+        name: String(form.get("name") || "").trim(),
+        email: String(form.get("email") || "").trim().toLowerCase(),
+        password: String(form.get("password") || ""),
+        role: String(form.get("role") || "player")
+      };
+      if (!user.name || !user.email || user.password.length < 6) {
+        $("#signupStatus").textContent = "Please fill all fields with a valid password.";
+        return;
+      }
+      upsertUser(user);
+      setSession(user);
+      $("#signupStatus").textContent = "Account created. Redirecting to dashboard...";
+      event.currentTarget.reset();
+      $("#signupForm [name='role']").value = "player";
+      $$("#signupRoleTabs .tab").forEach((node) => node.classList.toggle("active", node.dataset.role === "player"));
+      setTimeout(() => closeModal("#signupModal"), 280);
+    });
+
+    $("#loginForm").addEventListener("submit", (event) => {
+      event.preventDefault();
+      const form = new FormData(event.currentTarget);
+      const email = String(form.get("email") || "").trim().toLowerCase();
+      const password = String(form.get("password") || "");
+      const role = String(form.get("role") || "player");
+      const users = readStore(STORAGE_KEYS.USERS, []);
+      const user = users.find((entry) => entry.email === email && entry.role === role && entry.password === password);
+      if (!user) {
+        $("#loginStatus").textContent = "Invalid credentials for selected role.";
+        return;
+      }
+      setSession(user);
+      $("#loginStatus").textContent = "Login successful.";
+      event.currentTarget.reset();
+      setTimeout(() => closeModal("#loginModal"), 280);
+    });
+
+    $("#downloadSvgBtn").addEventListener("click", () => {
+      const svg = $("#analyticsSvg");
+      const serializer = new XMLSerializer();
+      const content = serializer.serializeToString(svg);
+      const blob = new Blob([content], { type: "image/svg+xml;charset=utf-8" });
       const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `${data.projectName || "simba"}-config.json`;
-      a.click();
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "skillhex-report.svg";
+      anchor.click();
       URL.revokeObjectURL(url);
-      setStatus("JSON downloaded.");
     });
 
-    $("loadBtn").addEventListener("click", () => $("fileInput").click());
-
-    $("fileInput").addEventListener("change", async (e) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      try {
-        const text = await file.text();
-        const data = JSON.parse(text);
-        setData(data);
-        $("output").value = buildPrompt(getData());
-        setStatus("JSON loaded.");
-      } catch {
-        setStatus("Invalid JSON file.");
-      } finally {
-        e.target.value = "";
-      }
-    });
-
-    const saved = localStorage.getItem("simba-config");
-    if (saved) {
-      try { setData(JSON.parse(saved)); } catch {}
-    }
+    render();
   </script>
 </body>
 </html>
