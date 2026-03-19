@@ -46,6 +46,19 @@ const SANITIZE_MAP = [
   [/\r/g, "\n"],            // bare CR → newline
 ];
 
+const TASK_FIELD_KEYS = new Set([
+  "repo",
+  "target_repo",
+  "mode",
+  "task",
+  "description",
+  "constraints",
+  "goal"
+]);
+
+const TASK_KEY_PATTERN = /^([A-Za-z][A-Za-z0-9_ -]{0,30}):\s*(.*)$/;
+const USER_INSTRUCTIONS_MARKER = /(?:^|\n)(?:#\s*)?User-provided custom instructions\s*\n/i;
+
 /**
  * Strip and normalize invisible/problematic characters that Telegram
  * often introduces in formatted messages.
@@ -222,7 +235,7 @@ export function parseTaskMessage(text) {
     throw new Error("Task message is empty.");
   }
 
-  const cleaned = sanitizeTelegram(text).trim();
+  const cleaned = sanitizeTelegram(stripTaskCommandPrefix(text)).trim();
 
   if (!cleaned) {
     throw new Error("Task message is empty after sanitization.");
@@ -246,6 +259,10 @@ export function parseTaskMessage(text) {
   return parseYamlTask(cleaned);
 }
 
+function stripTaskCommandPrefix(text) {
+  return text.replace(/^\/task\b\s*/i, "");
+}
+
 // ─── Format B: JSON ───────────────────────────────────────────────────────────
 
 function parseJsonTask(text) {
@@ -259,11 +276,11 @@ function parseJsonTask(text) {
   const targetRepo = String(obj.repo || obj.targetRepo || obj.target_repo || "").trim();
   const taskDescription = String(obj.task || obj.taskDescription || obj.task_description || obj.description || "").trim();
   const mode = String(obj.mode || "codex_then_claude").trim().toLowerCase();
-  const constraints = String(obj.constraints || "").trim();
+  const constraints = String(obj.constraints || obj.customInstructions || "").trim();
   const goal = String(obj.goal || "").trim();
 
   validateRequired({ targetRepo, taskDescription });
-  return { targetRepo, mode, taskDescription, constraints, goal };
+  return { targetRepo, mode: normalizeMode(mode), taskDescription, constraints, goal };
 }
 
 // ─── Format A: Multiline YAML ────────────────────────────────────────────────
@@ -271,50 +288,145 @@ function parseJsonTask(text) {
 /**
  * Parse multiline YAML-style task body.
  *
- * Supports multi-line values by treating lines that don't contain ":"
- * (or where the part before ":" looks like a known key) as continuation
- * lines appended to the previous field's value.
+ * Supports block scalars like `task: >` / `task: |`, indented continuations,
+ * and appended custom-instruction sections often pasted after the main task.
  */
 function parseYamlTask(text) {
-  const KNOWN_KEYS = new Set(["repo", "target_repo", "mode", "task", "description", "constraints", "goal"]);
-
-  const lines = text.split("\n");
+  const { body, customInstructions } = splitCustomInstructions(text);
+  const lines = body.split("\n");
   const map = {};
   let lastKey = null;
+  let blockKey = null;
+  let blockStyle = null;
+  let blockIndent = 0;
+  let blockLines = [];
+
+  const flushBlock = () => {
+    if (!blockKey) return;
+    map[blockKey] = normalizeBlockValue(blockLines, blockStyle);
+    lastKey = blockKey;
+    blockKey = null;
+    blockStyle = null;
+    blockIndent = 0;
+    blockLines = [];
+  };
 
   for (const rawLine of lines) {
-    const line = rawLine.trim();
-    if (!line) continue;
+    const line = rawLine.replace(/\t/g, "    ");
+    const trimmed = line.trim();
 
-    const colonIdx = line.indexOf(":");
-    if (colonIdx === -1) {
-      // Continuation line (no colon at all)
-      if (lastKey) {
-        map[lastKey] = (map[lastKey] + " " + line).trim();
+    if (blockKey) {
+      const indent = leadingWhitespace(line);
+      const nextKey = indent === 0 ? parseTaskKeyLine(trimmed) : null;
+      if (trimmed && nextKey && TASK_FIELD_KEYS.has(nextKey.key)) {
+        flushBlock();
+      } else {
+        if (!trimmed) {
+          blockLines.push("");
+          continue;
+        }
+        if (blockIndent === null) {
+          blockIndent = indent;
+        }
+        const normalizedLine = indent >= blockIndent ? line.slice(blockIndent) : trimmed;
+        blockLines.push(normalizedLine);
+        continue;
+      }
+    }
+
+    if (!trimmed) {
+      if (lastKey && map[lastKey]) {
+        map[lastKey] = `${map[lastKey]}\n`;
       }
       continue;
     }
 
-    const keyCandidate = line.slice(0, colonIdx).trim().toLowerCase().replace(/[\s-]/g, "_");
-    const valueRaw = line.slice(colonIdx + 1).trim();
-
-    // Check if key candidate is a known field key, or looks short and key-like
-    if (KNOWN_KEYS.has(keyCandidate) || (colonIdx <= 20 && /^[a-z_]+$/.test(keyCandidate))) {
-      map[keyCandidate] = valueRaw;
-      lastKey = keyCandidate;
-    } else {
-      // The colon is inside a value (e.g., "task: create tool: with features")
-      // Treat the whole line as a continuation of the previous key
-      if (lastKey) {
-        map[lastKey] = (map[lastKey] + " " + line).trim();
+    const parsed = parseTaskKeyLine(trimmed);
+    if (parsed && TASK_FIELD_KEYS.has(parsed.key)) {
+      const { key, value } = parsed;
+      if (value === ">" || value === "|") {
+        blockKey = key;
+        blockStyle = value;
+        blockIndent = null;
+        blockLines = [];
       } else {
-        // No previous key — try treating it as a value with embedded colons
-        // Fall through: skip
+        map[key] = value;
+        lastKey = key;
       }
+      continue;
+    }
+
+    if (lastKey) {
+      const joiner = map[lastKey]?.endsWith("\n") ? "" : " ";
+      map[lastKey] = `${map[lastKey] || ""}${joiner}${trimmed}`.trim();
     }
   }
 
-  return buildTaskFromMap(map);
+  flushBlock();
+
+  const task = buildTaskFromMap(map);
+  task.constraints = appendSection(task.constraints, customInstructions);
+  return task;
+}
+
+function splitCustomInstructions(text) {
+  const match = USER_INSTRUCTIONS_MARKER.exec(text);
+  if (!match) {
+    return { body: text, customInstructions: "" };
+  }
+
+  const markerStart = match.index;
+  const markerText = match[0].trim();
+  const body = text.slice(0, markerStart).trimEnd();
+  const customInstructions = [markerText, text.slice(markerStart + match[0].length).trim()].filter(Boolean).join("\n");
+  return { body, customInstructions };
+}
+
+function parseTaskKeyLine(line) {
+  const match = line.match(TASK_KEY_PATTERN);
+  if (!match) return null;
+  const key = match[1].trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return { key, value: match[2].trim() };
+}
+
+function leadingWhitespace(line) {
+  const match = line.match(/^\s*/);
+  return match ? match[0].length : 0;
+}
+
+function normalizeBlockValue(lines, style) {
+  if (!lines.length) return "";
+  const minIndent = lines
+    .filter((line) => line.trim())
+    .reduce((min, line) => Math.min(min, leadingWhitespace(line)), Infinity);
+
+  const normalizedLines = lines.map((line) => {
+    if (!line.trim()) return "";
+    if (Number.isFinite(minIndent) && minIndent > 0) {
+      return line.slice(minIndent);
+    }
+    return line;
+  });
+
+  if (style === "|") {
+    return normalizedLines.join("\n").trim();
+  }
+
+  return normalizedLines
+    .join("\n")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.replace(/\n/g, " ").trim())
+    .filter(Boolean)
+    .join("\n\n")
+    .trim();
+}
+
+function appendSection(existing, addition) {
+  const left = (existing || "").trim();
+  const right = (addition || "").trim();
+  if (!left) return right;
+  if (!right) return left;
+  return `${left}\n\n${right}`;
 }
 
 // ─── Format C: Inline YAML ───────────────────────────────────────────────────
@@ -337,7 +449,6 @@ function parseInlineYaml(text) {
 
   const map = {};
   const segments = [];
-  let lastIndex = 0;
   let match;
 
   while ((match = KEY_PATTERN.exec(text)) !== null) {
@@ -345,7 +456,6 @@ function parseInlineYaml(text) {
       segments[segments.length - 1].end = match.index;
     }
     segments.push({ key: match[1].toLowerCase(), start: match.index + match[0].length, end: text.length });
-    lastIndex = match.index;
   }
 
   for (const seg of segments) {
@@ -376,19 +486,18 @@ function buildTaskFromMap(map) {
 }
 
 function normalizeMode(mode) {
-  const valid = ["codex", "claude", "claude_repair", "codex_then_claude"];
-  if (valid.includes(mode)) return mode;
-  // Handle common aliases
-  if (mode === "repair") return "claude_repair";
-  if (mode === "both") return "codex_then_claude";
-  // Default
-  return "codex_then_claude";
+  if (!mode) return "codex_then_claude";
+  const aliases = new Map([
+    ["repair", "claude_repair"],
+    ["both", "codex_then_claude"]
+  ]);
+  return aliases.get(mode) || mode;
 }
 
 function validateRequired({ targetRepo, taskDescription }) {
   const errors = [];
   if (!targetRepo) errors.push("repo: (e.g. repo: owner/repo-name)");
-  if (!targetRepo.includes("/")) errors.push("repo must be in owner/repo format");
+  if (targetRepo && !targetRepo.includes("/")) errors.push("repo must be in owner/repo format");
   if (!taskDescription) errors.push("task: (e.g. task: describe what to do)");
 
   if (errors.length) {
